@@ -1,0 +1,174 @@
+Usuario conectado: Cuenta 1001 (PID: 6427)
+Usuario conectado: Cuenta 1009 (PID: 6463)
+Usuario conectado: Cuenta 1001 (PID: 8204)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+[ERROR] Operación fallida para cuenta 1001: Error desconocido
+Usuario conectado: Cuenta 1002 (PID: 8238)
+Usuario desconectado: PID 8204
+Usuario (Cuenta 1002): Usuario con cuenta 1002 ha iniciado sesión.
+[ERROR] Operación fallida para cuenta 1002: Error desconocido
+Usuario conectado: Cuenta 1001 (PID: 5652)
+Usuario desconectado: PID 5652
+Usuario conectado: Cuenta 1002 (PID: 5676)
+Usuario desconectado: PID 5676
+Usuario conectado: Cuenta 40 (PID: 5731)
+Usuario desconectado: PID 5731
+Usuario conectado: Cuenta 1001 (PID: 5760)
+Usuario desconectado: PID 5760
+Usuario conectado: Cuenta 1001 (PID: 5881)
+Usuario desconectado: PID 5881
+Usuario conectado: Cuenta 1001 (PID: 5900)
+Usuario desconectado: PID 5900
+Usuario conectado: Cuenta 1002 (PID: 5921)
+Usuario desconectado: PID 5921
+Usuario conectado: Cuenta 1003 (PID: 5942)
+Usuario desconectado: PID 5942
+Usuario conectado: Cuenta 1001 (PID: 6441)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario desconectado: PID 6441
+Usuario conectado: Cuenta 1003 (PID: 6515)
+Usuario (Cuenta 1003): Usuario con cuenta 1003 ha iniciado sesión.
+Usuario desconectado: PID 6515
+Usuario conectado: Cuenta 1001 (PID: 6594)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario desconectado: PID 6594
+Usuario conectado: Cuenta 1001 (PID: 6656)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario desconectado: PID 6656
+Usuario conectado: Cuenta 1002 (PID: 6671)
+Usuario (Cuenta 1002): Usuario con cuenta 1002 ha iniciado sesión.
+Usuario desconectado: PID 6671
+Usuario conectado: Cuenta 1002 (PID: 6688)
+Usuario (Cuenta 1002): Usuario con cuenta 1002 ha iniciado sesión.
+Usuario desconectado: PID 6688
+Usuario conectado: Cuenta 1003 (PID: 6700)
+Usuario (Cuenta 1003): Usuario con cuenta 1003 ha iniciado sesión.
+Usuario desconectado: PID 6700
+Usuario conectado: Cuenta 1001 (PID: 7040)
+Usuario desconectado: PID 7040
+Usuario conectado: Cuenta 1001 (PID: 7487)
+Usuario desconectado: PID 7487
+Usuario conectado: Cuenta 1001 (PID: 7628)
+Usuario desconectado: PID 7628
+Usuario conectado: Cuenta 1001 (PID: 7649)
+Usuario desconectado: PID 7649
+Usuario conectado: Cuenta 1001 (PID: 7749)
+Usuario desconectado: PID 7749
+Usuario conectado: Cuenta 1001 (PID: 7863)
+Usuario desconectado: PID 7863
+Usuario conectado: Cuenta 1001 (PID: 7892)
+Usuario desconectado: PID 7892
+Usuario conectado: Cuenta 1001 (PID: 8044)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:09:56] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 8044
+Usuario conectado: Cuenta 1001 (PID: 8155)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:12:12] Depósito de 100.00 en la cuenta 1001 completado.
+Usuario (Cuenta 1001): [2025-04-03 21:12:22] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 8155
+Usuario conectado: Cuenta 1001 (PID: 8274)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:15:49] Consulta de saldo en la cuenta 1001 completada.
+Usuario (Cuenta 1001): [2025-04-03 21:16:01] Retiro de 100.00 de la cuenta 1001 completado.
+Usuario (Cuenta 1001): [2025-04-03 21:16:06] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 8274
+Usuario conectado: Cuenta 1001 (PID: 8391)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:18:22] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 8391
+Usuario conectado: Cuenta 1001 (PID: 8448)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:19:37] Consulta de saldo en la cuenta 1001 completada.
+Usuario conectado: Cuenta 1001 (PID: 8461)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:20:16] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 8461
+Usuario conectado: Cuenta 1001 (PID: 8484)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:21:42] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 8484
+Usuario conectado: Cuenta 1001 (PID: 8684)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-03 21:28:24] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 8684
+Usuario conectado: Cuenta 1001 (PID: 26177)
+Usuario desconectado: PID 26177
+Usuario conectado: Cuenta 1001 (PID: 26207)
+Usuario desconectado: PID 26207
+Usuario conectado: Cuenta 1001 (PID: 26600)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 20:48:12] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 26600
+Usuario conectado: Cuenta 1001 (PID: 27709)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 20:49:57] Consulta de saldo en la cuenta 1001 completada.
+Usuario conectado: Cuenta 1001 (PID: 28038)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 20:50:46] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 28038
+Usuario conectado: Cuenta 1001 (PID: 29290)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 21:09:29] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 29290
+Usuario conectado: Cuenta 1001 (PID: 30637)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 21:14:23] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 30637
+Usuario conectado: Cuenta 1001 (PID: 30862)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 21:19:10] Depósito de 100.00 en la cuenta 1001 completado.
+Usuario conectado: Cuenta 1001 (PID: 46636)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 21:38:06] Depósito de 100.00 en la cuenta 1001 completado.
+Usuario desconectado: PID 46636
+Usuario conectado: Cuenta 1001 (PID: 55798)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-05 23:25:25] Transferencia de 100.00 desde la cuenta 1001 completada.
+Usuario conectado: Cuenta 1001 (PID: 3686)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario desconectado: PID 3686
+Usuario conectado: Cuenta 1001 (PID: 2683)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-16 12:06:55] Depósito de 100.00 en la cuenta 1001 completado.
+Usuario (Cuenta 1001): [2025-04-16 12:07:02] Consulta de saldo en la cuenta 1001 completada.
+Usuario conectado: Cuenta 1002 (PID: 2742)
+Usuario (Cuenta 1002): Usuario con cuenta 1002 ha iniciado sesión.
+Usuario desconectado: PID 2742
+Usuario desconectado: PID 2683
+Usuario conectado: Cuenta 1001 (PID: 3600)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-23 08:41:11] Consulta de saldo en la cuenta 1001 completada.
+Usuario (Cuenta 1001): [2025-04-23 08:41:30] Depósito de 1.00 en la cuenta 1001 completado.
+Usuario (Cuenta 1001): [2025-04-23 08:41:38] Consulta de saldo en la cuenta 1001 completada.
+Usuario (Cuenta 1001): [2025-04-23 08:41:47] Transferencia de 2.00 desde la cuenta 1001 completada.
+Usuario desconectado: PID 3600
+Usuario conectado: Cuenta 1001 (PID: 3951)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-23 08:44:20] Transferencia de 1.00 desde la cuenta 1001 completada.
+Usuario desconectado: PID 3951
+Usuario conectado: Cuenta 1001 (PID: 7462)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-25 11:53:28] Transferencia de 100.00 desde la cuenta 1001 a la cuenta 1002 completada.
+Usuario desconectado: PID 7462
+Usuario conectado: Cuenta 1001 (PID: 7883)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario conectado: Cuenta 1002 (PID: 7913)
+Usuario (Cuenta 1002): Usuario con cuenta 1002 ha iniciado sesión.
+Usuario (Cuenta 1001): [2025-04-25 11:55:36] Consulta de saldo en la cuenta 1001 completada.
+Usuario (Cuenta 1002): [2025-04-25 11:55:40] Consulta de saldo en la cuenta 1002 completada.
+Usuario (Cuenta 1002): [2025-04-25 11:55:52] Transferencia de 1000.00 desde la cuenta 1002 a la cuenta 1001 completada.
+Usuario (Cuenta 1001): [2025-04-25 11:55:58] Consulta de saldo en la cuenta 1001 completada.
+Usuario desconectado: PID 7883
+Usuario desconectado: PID 7913
+Usuario conectado: Cuenta 1001 (PID: 8625)
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha iniciado sesión.
+Usuario conectado: Cuenta 1002 (PID: 8658)
+Usuario (Cuenta 1002): Usuario con cuenta 1002 ha iniciado sesión.
+Usuario (Cuenta 1002): [2025-04-25 12:06:31] Consulta de saldo en la cuenta 1002 completada.
+Usuario (Cuenta 1001): [2025-04-25 12:06:35] Consulta de saldo en la cuenta 1001 completada.
+Usuario (Cuenta 1002): [2025-04-25 12:06:54] Transferencia de 50.00 desde la cuenta 1002 a la cuenta 1001 completada.
+Usuario (Cuenta 1001): [2025-04-25 12:06:58] Consulta de saldo en la cuenta 1001 completada.
+Usuario (Cuenta 1001): Usuario con cuenta 1001 ha cerrado sesión.
+Usuario desconectado: PID 8625
+Usuario desconectado: PID 8658
