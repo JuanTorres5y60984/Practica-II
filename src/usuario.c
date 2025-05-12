@@ -15,6 +15,7 @@
 #include <limits.h>   // Para PATH_MAX
 
 #define BUFFER_SIZE 256
+#define BUFFER_OPERACIONES_SIZE 10 // Debe coincidir con banco.c si se usa aquí
 
 
 // Definición de la estructura Operacion.
@@ -34,10 +35,20 @@ typedef struct {
     int bloqueado;
 } Cuenta;
 
+// Buffer circular para las operaciones de E/S (definición para que el usuario la conozca vía SHM)
+typedef struct {
+    Cuenta operaciones[BUFFER_OPERACIONES_SIZE]; // Usar la constante
+    int inicio;
+    int fin;
+    int contador;
+} BufferEstructurado;
+
 typedef struct {
     pthread_mutex_t mutex; // Para acceder al mutex desde el proceso hijo
+    pthread_mutex_t buffer_mutex; // Mutex para el buffer de operaciones
     Cuenta cuentas[100]; // Asumir MAX_CUENTAS 100, debe coincidir con banco.c
     int num_cuentas;
+    BufferEstructurado buffer_ops;
 } TablaCuentas;
 
 // Estructura para pasar parámetros al hilo.
@@ -108,11 +119,13 @@ void *ejecutar_operacion(void *arg) {
         sprintf(mensaje_usuario_local, "Error: Cuenta origen %d está bloqueada.\n", args->op.cuenta);
     } else {
         // Procesar operación
+        int operacion_exitosa_con_cambio_saldo = 0; // Flag para saber si hay que bufferizar
         switch (args->op.tipo_operacion) {
             case 1: // Depósito
                 tabla_bancaria_shm->cuentas[cuenta_idx].saldo += args->op.monto;
                 saldo_actual = tabla_bancaria_shm->cuentas[cuenta_idx].saldo;
                 sprintf(mensaje_usuario_local, "Depósito de %.2f realizado. Nuevo saldo: %.2f\n", args->op.monto, saldo_actual);
+                operacion_exitosa_con_cambio_saldo = 1;
                 sprintf(mensaje_para_log_usuario, "[%s] Depósito: +%.2f. Saldo resultante: %.2f\n", timestamp, args->op.monto, saldo_actual);
                 sprintf(mensaje_al_banco, "[%s] Depósito de %.2f en la cuenta %d. Nuevo Saldo: %.2f\n",
                        timestamp, args->op.monto, args->op.cuenta, saldo_actual);
@@ -122,6 +135,7 @@ void *ejecutar_operacion(void *arg) {
                     tabla_bancaria_shm->cuentas[cuenta_idx].saldo -= args->op.monto;
                     saldo_actual = tabla_bancaria_shm->cuentas[cuenta_idx].saldo;
                     sprintf(mensaje_usuario_local, "Retiro de %.2f realizado. Nuevo saldo: %.2f\n", args->op.monto, saldo_actual);
+                    operacion_exitosa_con_cambio_saldo = 1;
                     sprintf(mensaje_para_log_usuario, "[%s] Retiro: -%.2f. Saldo resultante: %.2f\n", timestamp, args->op.monto, saldo_actual);
                     sprintf(mensaje_al_banco, "[%s] Retiro de %.2f de la cuenta %d. Nuevo Saldo: %.2f\n",
                            timestamp, args->op.monto, args->op.cuenta, saldo_actual);
@@ -158,6 +172,7 @@ void *ejecutar_operacion(void *arg) {
                     saldo_actual_destino = tabla_bancaria_shm->cuentas[cuenta_destino_idx].saldo;
                     sprintf(mensaje_usuario_local, "Transferencia de %.2f a cuenta %d realizada. Nuevo saldo origen: %.2f. Nuevo saldo destino: %.2f\n",
                            args->op.monto, args->op.cuenta_destino, saldo_actual, saldo_actual_destino);
+                    operacion_exitosa_con_cambio_saldo = 1;
                     sprintf(mensaje_para_log_usuario, "[%s] Transferencia Enviada a %d: -%.2f. Saldo origen: %.2f. Saldo destino: %.2f\n",
                            timestamp, args->op.cuenta_destino, args->op.monto, saldo_actual, saldo_actual_destino);
                     sprintf(mensaje_al_banco, "[%s] Transferencia de %.2f desde la cuenta %d a la cuenta %d. Saldo origen: %.2f. Saldo destino: %.2f\n",
@@ -184,6 +199,27 @@ void *ejecutar_operacion(void *arg) {
                 sprintf(mensaje_al_banco, "[%s] Operación desconocida en la cuenta %d.\n",
                        timestamp, args->op.cuenta);
                 break;
+        }
+
+        // Si la operación fue exitosa y modificó el saldo, añadir al buffer de E/S
+        if (operacion_exitosa_con_cambio_saldo) {
+            if (pthread_mutex_lock(&tabla_bancaria_shm->buffer_mutex) == 0) {
+                if (tabla_bancaria_shm->buffer_ops.contador < BUFFER_OPERACIONES_SIZE) {
+                    // Copiar la estructura Cuenta actualizada al buffer
+                    tabla_bancaria_shm->buffer_ops.operaciones[tabla_bancaria_shm->buffer_ops.fin] = tabla_bancaria_shm->cuentas[cuenta_idx];
+                    tabla_bancaria_shm->buffer_ops.fin = (tabla_bancaria_shm->buffer_ops.fin + 1) % BUFFER_OPERACIONES_SIZE;
+                    tabla_bancaria_shm->buffer_ops.contador++;
+                } else {
+                    // Buffer lleno, registrar advertencia o manejar de otra forma
+                    // Por ahora, la operación en SHM está hecha, pero no se bufferiza para disco.
+                    pthread_mutex_lock(&stdout_mutex);
+                    fprintf(stderr, "Advertencia: Buffer de operaciones de E/S lleno. La operación en cuenta %d no se pudo encolar para escritura inmediata en disco.\n", args->op.cuenta);
+                    pthread_mutex_unlock(&stdout_mutex);
+                }
+                pthread_mutex_unlock(&tabla_bancaria_shm->buffer_mutex);
+            } else {
+                perror("Usuario: Error al bloquear mutex del buffer de E/S");
+            }
         }
     }
 
