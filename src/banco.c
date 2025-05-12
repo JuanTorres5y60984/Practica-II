@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <semaphore.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <sys/shm.h> // Para memoria compartida
+#include <pthread.h> // Para mutex en memoria compartida
 #include <sys/select.h> 
 #include <sys/time.h>
 #include <errno.h>
@@ -18,6 +19,7 @@
 //#define LOG_FILE "../data/transacciones.log"
 #define LOG_FILE "data/transacciones.log"
 #define MAX_USUARIOS_SIMULTANEOS 10
+#define MAX_CUENTAS 100 // Máximo número de cuentas en la memoria compartida
 #define FIFO_BASE_PATH "/tmp/banco_fifo_"
 
 typedef struct {
@@ -30,8 +32,23 @@ typedef struct {
     char archivo_log[256];
 } Config;
 
+typedef struct {
+    int numero_cuenta;
+    char titular[50];
+    float saldo;
+    int bloqueado; // 1 si la cuenta está bloqueada, 0 si está activa
+} Cuenta;
+
+typedef struct {
+    pthread_mutex_t mutex; // Mutex para sincronizar el acceso a las cuentas
+    Cuenta cuentas[MAX_CUENTAS];
+    int num_cuentas;
+} TablaCuentas;
+
 Config config;
 int continuar_ejecucion = 1;  // Flag para controlar el bucle principal
+TablaCuentas *tabla_global_cuentas = NULL; // Puntero a la memoria compartida
+int shm_id = -1; // ID del segmento de memoria compartida
 
 // Estructura para mantener información de usuarios activos
 typedef struct {
@@ -48,6 +65,30 @@ InfoUsuario usuarios[MAX_USUARIOS_SIMULTANEOS];
 /* Función para manejar señales y terminar adecuadamente */
 void manejador_senales(int sig) {
     printf("\nSeñal recibida (%d). Terminando proceso banco...\n", sig);
+    continuar_ejecucion = 0; // Esto detendrá el bucle principal
+}
+
+void limpiar_recursos_banco() {
+    printf("Limpiando recursos del banco...\n");
+
+    if (tabla_global_cuentas != NULL) {
+        // Destruir el mutex
+        if (pthread_mutex_destroy(&tabla_global_cuentas->mutex) != 0) {
+            perror("Error al destruir el mutex en memoria compartida");
+        }
+        // Desvincular la memoria compartida
+        if (shmdt(tabla_global_cuentas) == -1) {
+            perror("Error en shmdt al limpiar");
+        }
+        tabla_global_cuentas = NULL;
+    }
+    if (shm_id != -1) {
+        // Eliminar el segmento de memoria compartida
+        if (shmctl(shm_id, IPC_RMID, NULL) == -1) {
+            perror("Error en shmctl al limpiar");
+        }
+        shm_id = -1;
+    }
     continuar_ejecucion = 0;
 }
 
@@ -123,6 +164,48 @@ void limpiar_recursos_usuario(int idx) {
     usuarios[idx].cuenta = 0;
 }
 
+void cargar_cuentas_en_shm(const char* archivo_cuentas_path) {
+    FILE *f_cuentas = fopen(archivo_cuentas_path, "r");
+    if (f_cuentas == NULL) {
+        perror("Error al abrir el archivo de cuentas para cargar en SHM");
+        // Considerar manejo de error más robusto, como salir o usar valores por defecto
+        tabla_global_cuentas->num_cuentas = 0;
+        return;
+    }
+
+    printf("Cargando cuentas desde %s a memoria compartida...\n", archivo_cuentas_path);
+
+    int i = 0;
+    char line[256];
+    // El formato de init_cuentas.c es: numero_cuenta|titular|saldo|num_transacciones
+    // La estructura Cuenta en SHM es: numero_cuenta, titular, saldo, bloqueado
+    while (fgets(line, sizeof(line), f_cuentas) != NULL && i < MAX_CUENTAS) {
+        int num_cuenta_file;
+        char titular_file[50];
+        float saldo_file;
+        int num_trans_file; // Leerlo para consumir el dato del archivo
+
+        if (sscanf(line, "%d|%49[^|]|%f|%d", &num_cuenta_file, titular_file, &saldo_file, &num_trans_file) == 4) {
+            tabla_global_cuentas->cuentas[i].numero_cuenta = num_cuenta_file;
+            strncpy(tabla_global_cuentas->cuentas[i].titular, titular_file, 49);
+            tabla_global_cuentas->cuentas[i].titular[49] = '\0'; // Asegurar nul-termination
+            tabla_global_cuentas->cuentas[i].saldo = saldo_file;
+            tabla_global_cuentas->cuentas[i].bloqueado = 0; // Inicialmente desbloqueada
+            i++;
+        } else {
+            fprintf(stderr, "Advertencia: Línea mal formada en archivo de cuentas: %s", line);
+        }
+    }
+    tabla_global_cuentas->num_cuentas = i;
+    fclose(f_cuentas);
+    printf("%d cuentas cargadas en memoria compartida.\n", tabla_global_cuentas->num_cuentas);
+
+    // Imprimir para verificar (opcional)
+    // for(int k=0; k < tabla_global_cuentas->num_cuentas; k++) {
+    //     printf("SHM Cuenta: %d, Titular: %s, Saldo: %.2f, Bloqueado: %d\n", tabla_global_cuentas->cuentas[k].numero_cuenta, tabla_global_cuentas->cuentas[k].titular, tabla_global_cuentas->cuentas[k].saldo, tabla_global_cuentas->cuentas[k].bloqueado);
+    // }
+}
+
 int main() {
     // Inicializar array de usuarios
     for (int i = 0; i < MAX_USUARIOS_SIMULTANEOS; i++) {
@@ -136,18 +219,49 @@ int main() {
 
     // Leer el fichero de configuración.
     leer_configuracion(CONFIG_FILE, &config);
-    
 
     // Configuración de manejadores de señales para terminación adecuada
     signal(SIGINT, manejador_senales);
     signal(SIGTERM, manejador_senales);
 
-    // Crear un semáforo nombrado para controlar el acceso al archivo de cuentas.
-    sem_t *sem = sem_open("/cuentas_semaphore", O_CREAT, 0644, 1);
-    if (sem == SEM_FAILED) {
-        perror("Error al crear el semáforo");
+    // Crear segmento de memoria compartida
+    shm_id = shmget(IPC_PRIVATE, sizeof(TablaCuentas), IPC_CREAT | 0666);
+    if (shm_id < 0) {
+        perror("Error en shmget");
         exit(EXIT_FAILURE);
     }
+
+    // Adjuntar el segmento de memoria compartida al espacio de direcciones del proceso
+    tabla_global_cuentas = (TablaCuentas *)shmat(shm_id, NULL, 0);
+    if (tabla_global_cuentas == (void *)-1) {
+        perror("Error en shmat");
+        shmctl(shm_id, IPC_RMID, NULL); // Limpiar segmento SHM si shmat falla
+        exit(EXIT_FAILURE);
+    }
+
+    // Inicializar el mutex en la memoria compartida
+    pthread_mutexattr_t attr;
+    if (pthread_mutexattr_init(&attr) != 0) {
+        perror("Error al inicializar atributos del mutex");
+        limpiar_recursos_banco();
+        exit(EXIT_FAILURE);
+    }
+    if (pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED) != 0) {
+        perror("Error al configurar el atributo pshared del mutex");
+        pthread_mutexattr_destroy(&attr);
+        limpiar_recursos_banco();
+        exit(EXIT_FAILURE);
+    }
+    if (pthread_mutex_init(&tabla_global_cuentas->mutex, &attr) != 0) {
+        perror("Error al inicializar el mutex en memoria compartida");
+        pthread_mutexattr_destroy(&attr);
+        limpiar_recursos_banco();
+        exit(EXIT_FAILURE);
+    }
+    pthread_mutexattr_destroy(&attr); // Los atributos ya no son necesarios
+
+    // Cargar datos de cuentas desde el archivo a la memoria compartida
+    cargar_cuentas_en_shm(config.archivo_cuentas);
 
     // Abrir el archivo de log.
     const char *log_filename = strlen(config.archivo_log) > 0 ? config.archivo_log : LOG_FILE;
@@ -158,7 +272,7 @@ int main() {
     }
 
     printf("Banco iniciado. Esperando conexiones de usuario...\n");
-    printf("Presione Ctrl+C para terminar.\n\n");
+    printf("Memoria compartida ID: %d. Presione Ctrl+C para terminar.\n\n", shm_id);
 
     // Variables para el manejo no bloqueante de la entrada
     fd_set read_fds;
@@ -251,6 +365,9 @@ int main() {
                 
                 char cuenta_str[20];
                 sprintf(cuenta_str, "%d", cuenta_usuario);
+                char shm_id_str[20];
+                sprintf(shm_id_str, "%d", shm_id);
+
                 char titulo_ventana[64];
                 sprintf(titulo_ventana, "Usuario Banco - Cuenta %d", cuenta_usuario);
                 
@@ -264,6 +381,7 @@ int main() {
                     cuenta_str, 
                     fifo_from_usuario, 
                     fifo_to_usuario,
+                    shm_id_str, // Pasar el ID de la memoria compartida
                     NULL
                 };
 
@@ -281,6 +399,7 @@ int main() {
                     cuenta_str, 
                     fifo_from_usuario, 
                     fifo_to_usuario,
+                    shm_id_str,
                     NULL
                 };
                 
@@ -296,6 +415,7 @@ int main() {
                     cuenta_str, 
                     fifo_from_usuario, 
                     fifo_to_usuario,
+                    shm_id_str,
                     NULL
                 };
                 
@@ -410,315 +530,32 @@ int main() {
                         // Declarar respuesta y monto aquí para tenerlos disponibles en todo el bloque
                         char respuesta[512];
                         double monto = 0.0;
-                        int cuenta_msg = 0; // Para almacenar cuenta extraída del mensaje
-                        
-                        // Determinar tipo de operación basado en el mensaje
-                        if (strstr(buffer, "Depósito") != NULL) {
-                            // Respuesta para depósito
-                            sscanf(buffer, "[%*[^]]] Depósito de %lf en la cuenta %d", &monto, &cuenta_msg);
-                            printf("DEBUG: Extrayendo Depósito - monto=%.2f, cuenta=%d\n", monto, cuenta_msg);
-                            
+                        // Con memoria compartida, el proceso usuario realiza la operación.
+                        // El banco solo registra y confirma.
+                        // El formato del mensaje del usuario ahora puede incluir el resultado.
+                        // Ejemplo: "[Timestamp] Depósito de 100.00 en la cuenta 1001. Nuevo Saldo: 1100.00"
+                        // O el banco puede simplemente confirmar la recepción del tipo de operación.
 
-                            // Añadir saldo al archivo de cuentas 
-                            sem_wait(sem);
-                            printf("Intentando abrir archivo: %s\n", config.archivo_cuentas);
-                            printf("DEBUG: Ruta del archivo de cuentas: %s\n", config.archivo_cuentas);
-                            FILE *cuentas_file = fopen(config.archivo_cuentas, "r+");
-                            if(cuentas_file == NULL){
-                                perror("Error al abrir el archivo de cuentas");
-                                sem_post(sem);
-                                // TODO: decidir como quieres fallar esta comprobación
-                            }
-                            int cuenta_a_modificar = cuenta_msg; // Número de cuenta extraído del mensaje
-                            double monto_a_sumar = monto;       // Monto extraído del mensaje
-                            int cuenta_actual;
-                            char titular[50];
-                            double saldo_actual;
-                            int transacciones;
-                            long posicion;
+                        if (strstr(buffer, "Depósito") != NULL ||
+                            strstr(buffer, "Retiro") != NULL ||
+                            strstr(buffer, "Transferencia") != NULL ||
+                            strstr(buffer, "Consulta de saldo") != NULL ||
+                            strstr(buffer, "cerrado sesión") != NULL) {
 
-                            // Buscar la cuenta en el archivo
-                            while ((posicion = ftell(cuentas_file)) >= 0 && 
-                                fscanf(cuentas_file, "%d|%49[^|]|%lf|%d\n", &cuenta_actual, titular, &saldo_actual, &transacciones) == 4) {
-                                if (cuenta_actual == cuenta_a_modificar) {
-                                    // Mover el puntero del archivo a la posición de la línea encontrada
-                                    fseek(cuentas_file, posicion, SEEK_SET);
-
-                                    // Sumar el monto al saldo actual
-                                    saldo_actual += monto_a_sumar;
-                                    transacciones++; // Incrementar el número de transacciones
-
-                                    // Sobrescribir la línea con los nuevos datos
-                                    fprintf(cuentas_file, "%d|%s|%.2f|%d\n", cuenta_actual, titular, saldo_actual, transacciones);
-                                    printf("Cuenta %d actualizada con nuevo saldo: %.2f\n", cuenta_actual, saldo_actual);
-                                    break;
-                                }
+                            // Simplemente confirmar la recepción y el logueo.
+                            // El mensaje del buffer ya contiene los detalles de la operación realizada por el usuario.
+                            sprintf(respuesta, "Banco: Operación registrada para cuenta %d.\n", usuarios[i].cuenta);
+                            if (strstr(buffer, "Saldo actual")) { // Mensaje específico para consulta de saldo
+                                // El usuario ya mostró el saldo, el banco solo confirma.
+                                sprintf(respuesta, "Banco: Consulta de saldo para cuenta %d registrada.\n", usuarios[i].cuenta);
+                            } else if (strstr(buffer, "cerrado sesión")) {
+                                sprintf(respuesta, "Banco: Cierre de sesión de cuenta %d registrado.\n", usuarios[i].cuenta);
                             }
 
-                            fclose(cuentas_file); // Cerrar el archivo
-                            sem_post(sem);
-
-                            
-                            //------- Implementado la suma ------
-                            sprintf(respuesta, "Banco: Depósito de %.2f recibido y procesado.\n", monto);
-                        } 
-                        
-                        else if (strstr(buffer, "Retiro") != NULL) {
-                            // Respuesta para retiro
-                            sscanf(buffer, "[%*[^]]] Retiro de %lf de la cuenta %d", &monto, &cuenta_msg);
-                            printf("DEBUG: Extrayendo Retiro - monto=%.2f, cuenta=%d\n", monto, cuenta_msg);
-                            sem_wait(sem);
-                            printf("Intentando abrir archivo: %s\n", config.archivo_cuentas);
-                            printf("DEBUG: Ruta del archivo de cuentas: %s\n", config.archivo_cuentas);
-                            FILE *cuentas_file = fopen(config.archivo_cuentas, "r+");
-
-                            if(cuentas_file == NULL){
-                                perror("Error al abrir el archivo de cuentas");
-
-                                // Liberar recursos antes de salir
-                                sem_close(sem);
-                                sem_unlink("/cuentas_semaphore");
-                                fclose(log_file);
-                            
-                                // Salir con un código de error
-                                exit(EXIT_FAILURE);
-                            }
-                            if (monto > config.limite_retiro) {
-                                sprintf(respuesta, "Banco: Retiro de %.2f excede el límite permitido de %.2f.\n", 
-                                        monto, config.limite_retiro);
-                                fclose(cuentas_file);
-                                sem_post(sem);
-                                continue; 
-                            }
-                            int cuenta_a_modificar = cuenta_msg; // Número de cuenta extraído del mensaje
-                            double monto_a_restar = monto;       // Monto extraído del mensaje
-                            int cuenta_actual;
-                            char titular[50];
-                            double saldo_actual;
-                            int transacciones;
-                            long posicion;
-                            // Buscar la cuenta en el archivo
-                            while ((posicion = ftell(cuentas_file)) >= 0 && 
-                                fscanf(cuentas_file, "%d|%49[^|]|%lf|%d\n", &cuenta_actual, titular, &saldo_actual, &transacciones) == 4) {
-                                if (cuenta_actual == cuenta_a_modificar) {
-                                    // Mover el puntero del archivo a la posición de la línea encontrada
-                                    fseek(cuentas_file, posicion, SEEK_SET);
-
-                                    // Sumar el monto al saldo actual
-                                    saldo_actual -= monto_a_restar;
-                                    transacciones++; // Incrementar el número de transacciones
-
-                                    // Sobrescribir la línea con los nuevos datos
-                                    fprintf(cuentas_file, "%d|%s|%.2f|%d\n", cuenta_actual, titular, saldo_actual, transacciones);
-                                    printf("Cuenta %d actualizada con nuevo saldo: %.2f\n", cuenta_actual, saldo_actual);
-                                    break;
-                                }
-                            }
-
-                            fclose(cuentas_file); // Cerrar el archivo
-                            sem_post(sem);
-                            sprintf(respuesta, "Banco: Retiro de %.2f procesado.\n", monto);
-                        }
-                        else if (strstr(buffer, "Transferencia") != NULL) {
-                            int cuenta_origen, cuenta_destino;
-                            // Asegúrate de que usuario.c envía el mensaje en este formato:
-                            // "[Timestamp] Transferencia de MONTO desde la cuenta ORIGEN a la cuenta DESTINO completada."
-                            if (sscanf(buffer, "[%*[^]]] Transferencia de %lf desde la cuenta %d a la cuenta %d", &monto, &cuenta_origen, &cuenta_destino) == 3) {
-                                printf("DEBUG: Extrayendo Transferencia - monto=%.2f, origen=%d, destino=%d\n", monto, cuenta_origen, cuenta_destino);
-
-                                // --- INICIO LÓGICA DE TRANSFERENCIA ---
-
-                                // 1. Validaciones iniciales rápidas
-                                if (cuenta_origen == cuenta_destino) {
-                                    sprintf(respuesta, "Banco: Error, la cuenta origen y destino no pueden ser la misma (%d).\n", cuenta_origen);
-                                } else if (monto <= 0) {
-                                    sprintf(respuesta, "Banco: Error, el monto a transferir debe ser positivo (%.2f).\n", monto);
-                                } else if (monto > config.limite_transferencia) {
-                                     sprintf(respuesta, "Banco: Error, el monto %.2f excede el límite de transferencia permitido (%d).\n", monto, config.limite_transferencia);
-                                } else {
-                                    // 2. Adquirir semáforo para acceso exclusivo al archivo
-                                    sem_wait(sem);
-
-                                    // 3. Abrir archivo original para leer y temporal para escribir
-                                    char temp_filename[] = "data/cuentas.tmp"; // Nombre del archivo temporal
-                                    FILE *cuentas_file = fopen(config.archivo_cuentas, "r");
-                                    FILE *temp_file = fopen(temp_filename, "w");
-
-                                    if (!cuentas_file || !temp_file) {
-                                        perror("Error al abrir archivo de cuentas o temporal para transferencia");
-                                        if (cuentas_file) fclose(cuentas_file);
-                                        if (temp_file) fclose(temp_file);
-                                        sem_post(sem);
-                                        sprintf(respuesta, "Banco: Error interno del servidor al procesar transferencia.\n");
-                                        // El 'continue' no aplica aquí, se enviará la respuesta al final
-                                    } else {
-                                        // 4. Variables para guardar datos de las cuentas encontradas
-                                        int found_origen = 0, found_destino = 0;
-                                        double saldo_origen = -1.0, saldo_destino = -1.0;
-                                        int trans_origen = -1, trans_destino = -1;
-                                        char titular_origen[50] = "", titular_destino[50] = "";
-                                        int error_operacion = 0; // Flag para errores durante la operación
-
-                                        // 5. Leer archivo original, buscar cuentas y validar saldo origen
-                                        char line_buffer[256];
-                                        int current_cuenta;
-                                        char current_titular[50];
-                                        double current_saldo;
-                                        int current_transacciones;
-
-                                        while (fgets(line_buffer, sizeof(line_buffer), cuentas_file) != NULL) {
-                                            // Parsear la línea actual
-                                            if (sscanf(line_buffer, "%d|%49[^|]|%lf|%d", &current_cuenta, current_titular, &current_saldo, &current_transacciones) == 4) {
-                                                if (current_cuenta == cuenta_origen) {
-                                                    found_origen = 1;
-                                                    if (current_saldo < monto) {
-                                                        sprintf(respuesta, "Banco: Saldo insuficiente en cuenta origen %d (Saldo: %.2f, Solicitado: %.2f).\n", cuenta_origen, current_saldo, monto);
-                                                        error_operacion = 1;
-                                                        break; // Salir del bucle while, no se puede proceder
-                                                    }
-                                                    saldo_origen = current_saldo;
-                                                    trans_origen = current_transacciones;
-                                                    strcpy(titular_origen, current_titular);
-                                                } else if (current_cuenta == cuenta_destino) {
-                                                    found_destino = 1;
-                                                    saldo_destino = current_saldo;
-                                                    trans_destino = current_transacciones;
-                                                    strcpy(titular_destino, current_titular);
-                                                }
-                                            }
-                                        } // Fin while fgets
-
-                                        // 6. Validar si se encontraron ambas cuentas (si no hubo error de saldo antes)
-                                        if (!error_operacion) {
-                                            if (!found_origen) {
-                                                sprintf(respuesta, "Banco: Error, cuenta origen %d no encontrada.\n", cuenta_origen);
-                                                error_operacion = 1;
-                                            } else if (!found_destino) {
-                                                sprintf(respuesta, "Banco: Error, cuenta destino %d no encontrada.\n", cuenta_destino);
-                                                error_operacion = 1;
-                                            }
-                                        }
-
-                                        // 7. Si todo es válido hasta ahora, proceder a escribir el archivo temporal
-                                        if (!error_operacion) {
-                                            rewind(cuentas_file); // Volver al inicio del archivo original para leerlo de nuevo
-
-                                            double nuevo_saldo_origen = saldo_origen - monto;
-                                            double nuevo_saldo_destino = saldo_destino + monto;
-                                            int nuevas_trans_origen = trans_origen + 1;
-                                            int nuevas_trans_destino = trans_destino + 1;
-
-                                            while (fgets(line_buffer, sizeof(line_buffer), cuentas_file) != NULL) {
-                                                // Parsear de nuevo para saber qué línea es
-                                                if (sscanf(line_buffer, "%d|%*[^|]|%*f|%*d", &current_cuenta) == 1) {
-                                                    if (current_cuenta == cuenta_origen) {
-                                                        // Escribir línea modificada de origen
-                                                        fprintf(temp_file, "%d|%s|%.2f|%d\n", cuenta_origen, titular_origen, nuevo_saldo_origen, nuevas_trans_origen);
-                                                    } else if (current_cuenta == cuenta_destino) {
-                                                        // Escribir línea modificada de destino
-                                                        fprintf(temp_file, "%d|%s|%.2f|%d\n", cuenta_destino, titular_destino, nuevo_saldo_destino, nuevas_trans_destino);
-                                                    } else {
-                                                        // Escribir línea sin modificar
-                                                        fputs(line_buffer, temp_file);
-                                                    }
-                                                } else {
-                                                    fputs(line_buffer, temp_file); // Copiar líneas mal formadas o vacías
-                                                }
-                                            } // Fin while escritura temp_file
-
-                                            // 8. Cerrar archivos
-                                            fclose(cuentas_file);
-                                            fclose(temp_file);
-
-                                            // 9. Reemplazar archivo original con el temporal
-                                            if (remove(config.archivo_cuentas) != 0) {
-                                                perror("Error al eliminar el archivo de cuentas original");
-                                                remove(temp_filename); // Intentar limpiar el temporal
-                                                sprintf(respuesta, "Banco: Error CRÍTICO al actualizar archivo de cuentas (remove).\n");
-                                                // Considera loggear este error grave
-                                            } else if (rename(temp_filename, config.archivo_cuentas) != 0) {
-                                                perror("Error al renombrar el archivo temporal");
-                                                sprintf(respuesta, "Banco: Error CRÍTICO al actualizar archivo de cuentas (rename).\n");
-                                                // Considera loggear este error grave (original borrado, temporal no renombrado)
-                                            } else {
-                                                // ¡Éxito! Preparar mensaje de confirmación
-                                                sprintf(respuesta, "Banco: Transferencia de %.2f desde %d a %d realizada. Nuevo saldo origen: %.2f\n",
-                                                        monto, cuenta_origen, cuenta_destino, nuevo_saldo_origen);
-                                                printf("Archivo de cuentas actualizado correctamente tras transferencia.\n");
-                                            }
-                                        } else {
-                                            // Hubo un error (saldo, cuenta no encontrada), cerrar archivos y limpiar temporal
-                                            fclose(cuentas_file);
-                                            fclose(temp_file);
-                                            remove(temp_filename);
-                                            printf("Transferencia inválida o fallida. No se modificó el archivo de cuentas.\n");
-                                            // 'respuesta' ya contiene el mensaje de error específico
-                                        }
-
-                                        // 10. Liberar semáforo
-                                        sem_post(sem);
-                                    } // Fin else (!cuentas_file || !temp_file)
-                                } // Fin else (validaciones iniciales)
-
-                                // --- FIN LÓGICA DE TRANSFERENCIA ---
-
-                            } else {
-                                // Error al parsear el mensaje de transferencia del usuario
-                                sprintf(respuesta, "Banco: Error al procesar mensaje de transferencia (formato incorrecto).\n");
-                                fprintf(stderr, "Error: No se pudo parsear el mensaje de transferencia recibido: %s", buffer);
-                            }
-                        }
-                        else if (strstr(buffer, "Consulta de saldo") != NULL) {
-                            sscanf(buffer, "[%*[^]]] Consulta de saldo en la cuenta %d completada.", &cuenta_msg);
-                            printf("DEBUG: Consultando saldo para cuenta %d (extraída del mensaje)\n", cuenta_msg);
-                            
-                            // Consulta de saldo - leer el archivo de cuentas
-                            sem_wait(sem);
-                            double saldo = -1;
-                            
-                            // Log para depuración: verificar la ruta del archivo
-                            printf("Intentando abrir archivo: %s\n", config.archivo_cuentas);
-                            printf("DEBUG: Ruta del archivo de cuentas: %s\n", config.archivo_cuentas);
-                            FILE *cuentas_file = fopen(config.archivo_cuentas, "r");
-                            
-
-                            if (cuentas_file) {
-                                int current_cuenta;
-                                char titular[50];
-                                double current_saldo;
-                                int transacciones;
-                                printf("DEBUG: Buscando cuenta %d en archivo de cuentas\n", usuarios[i].cuenta);
-                                
-                                // Leer el archivo usando '|' como delimitador
-                                while (fscanf(cuentas_file, "%d|%49[^|]|%lf|%d", 
-                                              &current_cuenta, titular, &current_saldo, &transacciones) == 4) {
-                                    printf("Leyendo: Cuenta=%d, Titular=%s, Saldo=%.2f, Transacciones=%d\n", 
-                                           current_cuenta, titular, current_saldo, transacciones);
-                                    if (current_cuenta == usuarios[i].cuenta) {
-                                        saldo = current_saldo;
-                                        break;
-                                    }
-                                }
-                                fclose(cuentas_file);
-                                
-                                if (saldo >= 0) {
-                                    sprintf(respuesta, "Banco: Saldo actual de la cuenta %d: $%.2f\n", 
-                                            usuarios[i].cuenta, saldo);
-                                    printf("DEBUG: Saldo encontrado: %.2f\n", saldo);
-                                } else {
-                                    sprintf(respuesta, "Banco: No se encontró la cuenta %d en el registro.\n", 
-                                            usuarios[i].cuenta);
-                                    printf("DEBUG: No se encontró la cuenta en el archivo\n");
-                                }
-                            } else {
-                                sprintf(respuesta, "Banco: Error al acceder al archivo de cuentas.\n");
-                                perror("Error al abrir archivo de cuentas");
-                            }
-                            sem_post(sem);
                         } else {
-                            // Mensaje genérico para otros casos
-                            sprintf(respuesta, "Banco: Mensaje recibido. Procesando...\n");
+                            sprintf(respuesta, "Banco: Mensaje desconocido recibido de cuenta %d.\n", usuarios[i].cuenta);
                         }
+
                         
                         // Enviar respuesta apropiada al usuario
                         if (usuarios[i].fifo_escritura_fd > 0) {
@@ -760,10 +597,8 @@ int main() {
         }
     }
 
-    // Cierre de recursos.
     fclose(log_file);
-    sem_close(sem);
-    sem_unlink("/cuentas_semaphore");
+    limpiar_recursos_banco(); // Limpia SHM y mutex
 
     printf("Proceso del banco finalizado correctamente.\n");
     return EXIT_SUCCESS;

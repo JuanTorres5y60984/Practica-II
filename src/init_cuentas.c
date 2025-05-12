@@ -10,6 +10,7 @@ typedef struct {
     char titular[50];
     float saldo;
     int num_transacciones;
+    // El campo 'bloqueado' se añadirá al formato del archivo, inicializado a 0.
 } Cuenta;
 
 int main(void) {
@@ -45,13 +46,14 @@ int main(void) {
     // Calcular el número de cuentas
     size_t num_cuentas = sizeof(cuentas) / sizeof(cuentas[0]);
     
-    // Escribir las cuentas en el archivo usando '|' como delimitador
+    // Escribir las cuentas en el archivo: numero_cuenta|titular|saldo|num_transacciones|bloqueado
     for (size_t i = 0; i < num_cuentas; i++) {
-        fprintf(archivo, "%d|%s|%.2f|%d\n", 
+        fprintf(archivo, "%d|%s|%.2f|%d|%d\n", 
                 cuentas[i].numero_cuenta, 
                 cuentas[i].titular, 
                 cuentas[i].saldo, 
-                cuentas[i].num_transacciones);
+                cuentas[i].num_transacciones,
+                0); // 0 para indicar que la cuenta no está bloqueada
         if (ferror(archivo)) {
             perror("Error al escribir en el archivo");
             fclose(archivo);
