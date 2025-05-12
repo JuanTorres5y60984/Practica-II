@@ -11,9 +11,10 @@
 #include <sys/shm.h> // Para memoria compartida
 #include <signal.h>
 #include <errno.h>
+#include <sys/stat.h> // Para mkdir
+#include <limits.h>   // Para PATH_MAX
 
 #define BUFFER_SIZE 256
-#define LOG_FILE "../data/transacciones.log"
 
 
 // Definición de la estructura Operacion.
@@ -49,11 +50,13 @@ char fifo_escritura[256]; // Usuario escribe aquí, banco lee
 char fifo_lectura[256];   // Banco escribe aquí, usuario lee
 int fifo_escritura_fd = -1;
 int fifo_lectura_fd = -1;
+char user_log_path[PATH_MAX]; // Ruta al archivo de log del usuario
 TablaCuentas *tabla_bancaria_shm = NULL; // Puntero a la memoria compartida
 int shm_id_usuario = -1; // ID del segmento de memoria compartida recibido del banco
 
 // Mutex para sincronizar la salida
 pthread_mutex_t stdout_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t log_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //prototipo de la función timestamp
 void get_timestamp(char *buffer, size_t size);
@@ -62,6 +65,7 @@ void get_timestamp(char *buffer, size_t size);
 void *ejecutar_operacion(void *arg) {
     OperacionArgs *args = (OperacionArgs *)arg;
     char mensaje_al_banco[BUFFER_SIZE];
+    char mensaje_para_log_usuario[BUFFER_SIZE];
     char mensaje_usuario_local[BUFFER_SIZE]; // Mensaje para mostrar localmente
     char timestamp[30];
     get_timestamp(timestamp, sizeof(timestamp));
@@ -109,6 +113,7 @@ void *ejecutar_operacion(void *arg) {
                 tabla_bancaria_shm->cuentas[cuenta_idx].saldo += args->op.monto;
                 saldo_actual = tabla_bancaria_shm->cuentas[cuenta_idx].saldo;
                 sprintf(mensaje_usuario_local, "Depósito de %.2f realizado. Nuevo saldo: %.2f\n", args->op.monto, saldo_actual);
+                sprintf(mensaje_para_log_usuario, "[%s] Depósito: +%.2f. Saldo resultante: %.2f\n", timestamp, args->op.monto, saldo_actual);
                 sprintf(mensaje_al_banco, "[%s] Depósito de %.2f en la cuenta %d. Nuevo Saldo: %.2f\n",
                        timestamp, args->op.monto, args->op.cuenta, saldo_actual);
                 break;
@@ -117,11 +122,13 @@ void *ejecutar_operacion(void *arg) {
                     tabla_bancaria_shm->cuentas[cuenta_idx].saldo -= args->op.monto;
                     saldo_actual = tabla_bancaria_shm->cuentas[cuenta_idx].saldo;
                     sprintf(mensaje_usuario_local, "Retiro de %.2f realizado. Nuevo saldo: %.2f\n", args->op.monto, saldo_actual);
+                    sprintf(mensaje_para_log_usuario, "[%s] Retiro: -%.2f. Saldo resultante: %.2f\n", timestamp, args->op.monto, saldo_actual);
                     sprintf(mensaje_al_banco, "[%s] Retiro de %.2f de la cuenta %d. Nuevo Saldo: %.2f\n",
                            timestamp, args->op.monto, args->op.cuenta, saldo_actual);
                 } else {
                     sprintf(mensaje_usuario_local, "Error: Saldo insuficiente para retiro (%.2f) en cuenta %d. Saldo actual: %.2f\n",
                            args->op.monto, args->op.cuenta, tabla_bancaria_shm->cuentas[cuenta_idx].saldo);
+                    sprintf(mensaje_para_log_usuario, "[%s] Intento de Retiro FALLIDO (saldo insuficiente): %.2f. Saldo actual: %.2f\n", timestamp, args->op.monto, tabla_bancaria_shm->cuentas[cuenta_idx].saldo);
                     sprintf(mensaje_al_banco, "[%s] Intento de Retiro FALLIDO (saldo insuficiente) de %.2f de la cuenta %d.\n",
                            timestamp, args->op.monto, args->op.cuenta);
                 }
@@ -136,10 +143,12 @@ void *ejecutar_operacion(void *arg) {
                 }
                 if (cuenta_destino_idx == -1) {
                     sprintf(mensaje_usuario_local, "Error: Cuenta destino %d no encontrada.\n", args->op.cuenta_destino);
+                    sprintf(mensaje_para_log_usuario, "[%s] Intento de Transferencia FALLIDO (cuenta destino %d no encontrada) desde %d a %d.\n", timestamp, args->op.cuenta_destino, args->op.cuenta, args->op.cuenta_destino);
                     sprintf(mensaje_al_banco, "[%s] Intento de Transferencia FALLIDO (cuenta destino %d no encontrada) desde %d.\n",
                            timestamp, args->op.cuenta_destino, args->op.cuenta);
                 } else if (tabla_bancaria_shm->cuentas[cuenta_destino_idx].bloqueado) {
                      sprintf(mensaje_usuario_local, "Error: Cuenta destino %d está bloqueada.\n", args->op.cuenta_destino);
+                     sprintf(mensaje_para_log_usuario, "[%s] Intento de Transferencia FALLIDO (cuenta destino %d bloqueada) desde %d a %d.\n", timestamp, args->op.cuenta_destino, args->op.cuenta, args->op.cuenta_destino);
                      sprintf(mensaje_al_banco, "[%s] Intento de Transferencia FALLIDO (cuenta destino %d bloqueada) desde %d.\n",
                            timestamp, args->op.cuenta_destino, args->op.cuenta);
                 } else if (tabla_bancaria_shm->cuentas[cuenta_idx].saldo >= args->op.monto) {
@@ -149,11 +158,15 @@ void *ejecutar_operacion(void *arg) {
                     saldo_actual_destino = tabla_bancaria_shm->cuentas[cuenta_destino_idx].saldo;
                     sprintf(mensaje_usuario_local, "Transferencia de %.2f a cuenta %d realizada. Nuevo saldo origen: %.2f. Nuevo saldo destino: %.2f\n",
                            args->op.monto, args->op.cuenta_destino, saldo_actual, saldo_actual_destino);
+                    sprintf(mensaje_para_log_usuario, "[%s] Transferencia Enviada a %d: -%.2f. Saldo origen: %.2f. Saldo destino: %.2f\n",
+                           timestamp, args->op.cuenta_destino, args->op.monto, saldo_actual, saldo_actual_destino);
                     sprintf(mensaje_al_banco, "[%s] Transferencia de %.2f desde la cuenta %d a la cuenta %d. Saldo origen: %.2f. Saldo destino: %.2f\n",
                            timestamp, args->op.monto, args->op.cuenta, args->op.cuenta_destino, saldo_actual, saldo_actual_destino);
                 } else {
                     sprintf(mensaje_usuario_local, "Error: Saldo insuficiente para transferir (%.2f) desde cuenta %d. Saldo actual: %.2f\n",
                            args->op.monto, args->op.cuenta, tabla_bancaria_shm->cuentas[cuenta_idx].saldo);
+                    sprintf(mensaje_para_log_usuario, "[%s] Intento de Transferencia FALLIDO (saldo insuficiente): %.2f desde cuenta %d a %d. Saldo actual: %.2f\n",
+                           timestamp, args->op.monto, args->op.cuenta, args->op.cuenta_destino, tabla_bancaria_shm->cuentas[cuenta_idx].saldo);
                     sprintf(mensaje_al_banco, "[%s] Intento de Transferencia FALLIDO (saldo insuficiente) de %.2f desde cuenta %d a %d.\n",
                            timestamp, args->op.monto, args->op.cuenta, args->op.cuenta_destino);
                 }
@@ -161,11 +174,13 @@ void *ejecutar_operacion(void *arg) {
             case 4: // Consultar saldo
                 saldo_actual = tabla_bancaria_shm->cuentas[cuenta_idx].saldo;
                 sprintf(mensaje_usuario_local, "Saldo actual de la cuenta %d: %.2f\n", args->op.cuenta, saldo_actual);
+                sprintf(mensaje_para_log_usuario, "[%s] Consulta Saldo: %.2f\n", timestamp, saldo_actual);
                 sprintf(mensaje_al_banco, "[%s] Consulta de saldo en la cuenta %d. Saldo actual: %.2f\n",
                        timestamp, args->op.cuenta, saldo_actual);
                 break;
             default:
                 sprintf(mensaje_usuario_local, "Operación desconocida.\n");
+                sprintf(mensaje_para_log_usuario, "[%s] Operación desconocida en la cuenta %d.\n", timestamp, args->op.cuenta);
                 sprintf(mensaje_al_banco, "[%s] Operación desconocida en la cuenta %d.\n",
                        timestamp, args->op.cuenta);
                 break;
@@ -176,6 +191,22 @@ void *ejecutar_operacion(void *arg) {
     if (pthread_mutex_unlock(&tabla_bancaria_shm->mutex) != 0) {
         perror("Usuario: Error al desbloquear mutex de SHM");
         // Continuar de todas formas para no dejar el mutex bloqueado indefinidamente si es posible
+    }
+
+    // Registrar la operación en el archivo de log del usuario
+    if (strlen(user_log_path) > 0 && strlen(mensaje_para_log_usuario) > 0) {
+        pthread_mutex_lock(&log_file_mutex);
+        FILE *log_file_usuario = fopen(user_log_path, "a");
+        if (log_file_usuario != NULL) {
+            fprintf(log_file_usuario, "%s", mensaje_para_log_usuario);
+            fclose(log_file_usuario);
+        } else {
+            pthread_mutex_lock(&stdout_mutex);
+            fprintf(stderr, "Error: No se pudo abrir el archivo de log del usuario: %s\n", user_log_path);
+            perror("fopen user log");
+            pthread_mutex_unlock(&stdout_mutex);
+        }
+        pthread_mutex_unlock(&log_file_mutex);
     }
 
     // Mostrar mensaje local al usuario (sincronizado con stdout_mutex)
@@ -315,7 +346,6 @@ void manejador_terminar(int sig) {
 }
 
 // Función para obtener timestamp actual
-char timestamp[30];
 void get_timestamp(char *buffer, size_t size) {
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);
@@ -380,6 +410,32 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, manejador_terminar);
     signal(SIGINT, manejador_terminar);
     
+    // Crear directorio de transacciones para el usuario si no existe
+    char user_dir_path[PATH_MAX];
+    const char *base_transaction_dir = "/transacciones";
+
+    // Intentar crear el directorio base /transacciones si no existe.
+    // Esto aún podría fallar si el proceso no tiene permisos para escribir en /
+    // o para crear el directorio 'transacciones' si no existe.
+    if (mkdir(base_transaction_dir, 0777) == -1) {
+        if (errno != EEXIST) {
+            // Esto es una advertencia; el siguiente mkdir podría fallar de forma más específica.
+            perror("Advertencia al intentar crear el directorio base /transacciones");
+        }
+    }
+
+    // Crear el directorio específico del usuario dentro de /transacciones
+    snprintf(user_dir_path, sizeof(user_dir_path), "/transacciones/%d", numero_cuenta);
+    if (mkdir(user_dir_path, 0777) == -1) {
+        if (errno != EEXIST) {
+            perror("Error al crear el directorio del usuario en /transacciones");
+            // El logueo a archivo fallará, pero el resto del programa puede continuar.
+            // user_log_path se establecerá, pero fopen fallará más adelante.
+        }
+    }
+    // Establecer la ruta completa del archivo de log del usuario
+    snprintf(user_log_path, sizeof(user_log_path), "%s/transacciones.log", user_dir_path);
+
     printf("Proceso usuario iniciado con PID: %d para cuenta %d\n", getpid(), numero_cuenta);
     printf("Intentando conectar a SHM ID: %d\n", shm_id_usuario);
 
@@ -390,6 +446,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     printf("Conectado a memoria compartida. Número de cuentas en SHM (según banco): %d\n", tabla_bancaria_shm->num_cuentas);
+    printf("Logs de este usuario se guardarán en: %s\n", user_log_path);
 
     // Abrir FIFOs
     printf("Abriendo FIFO para escritura a banco: %s\n", fifo_escritura);
@@ -431,6 +488,7 @@ int main(int argc, char *argv[]) {
 
     // Enviar mensaje de inicio de sesión al banco
     char msg_inicio[BUFFER_SIZE];
+    char timestamp[30]; // Local a esta sección de código
     get_timestamp(timestamp, sizeof(timestamp));
     sprintf(msg_inicio, "[%s] Usuario con cuenta %d ha iniciado sesión y conectado a SHM.\n", timestamp, numero_cuenta);
     if (write(fifo_escritura_fd, msg_inicio, strlen(msg_inicio)) < 0) {
@@ -466,5 +524,3 @@ int main(int argc, char *argv[]) {
     printf("Usuario %d finalizado.\n", numero_cuenta);
     return EXIT_SUCCESS;
 }
-
-
