@@ -3,10 +3,14 @@
 Este proyecto implementa un sistema bancario concurrente utilizando múltiples procesos y comunicación entre ellos. A continuación, se describen los componentes principales del sistema y cómo se integran.
 
 ## ANTES DE EMPEZAR
-instalar xterm:  sudo apt-get install xterm
-
-compilar con: gcc -g -o bin/usuario src/usuario.c -pthread -lrt && gcc -g -o bin/monitor src/monitor.c -pthread -lrt && gcc -g -o bin/init_cuentas src/init_cuentas.c -pthread -lrt && gcc -g -o bin/banco src/banco.c -pthread -lrt
-
+instalar xterm:  
+```sh
+sudo apt-get install xterm
+```
+compilar con: 
+```sh
+gcc -g -o bin/usuario src/usuario.c -pthread -lrt && gcc -g -o bin/monitor src/monitor.c -pthread -lrt && gcc -g -o bin/init_cuentas src/init_cuentas.c -pthread -lrt && gcc -g -o bin/banco src/banco.c -pthread -lrt
+```
 ## Componentes
 
 ### 1. `banco.c`
@@ -69,7 +73,7 @@ gcc -o bin/usuario src/usuario.c -pthread -lrt
 3. Ejecutar el programa `banco`:
 
 ```sh
-./bin/banco
+sudo ./bin/banco
 ```
 
 4. Ejecutar el programa `monitor` en otra terminal:
@@ -81,7 +85,7 @@ gcc -o bin/usuario src/usuario.c -pthread -lrt
 5. Los usuarios pueden interactuar con el sistema ejecutando el programa `usuario`:
 
 ```sh
-./bin/usuario
+introduciendo un numero de cuenta en el programa banco
 ```
 
 ## Notas
