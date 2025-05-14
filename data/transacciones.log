@@ -212,3 +212,45 @@ Usuario conectado: Cuenta 1001 (PID: 9528)
 Usuario (Cuenta 1001): [2025-05-12 17:32:09] Usuario con cuenta 1001 ha iniciado sesión y conectado a SHM.
 Usuario (Cuenta 1001): [2025-05-12 17:32:21] Consulta de saldo en la cuenta 1001. Saldo actual: 2151.00
 Usuario desconectado: PID 9528
+Usuario conectado: Cuenta 1001 (PID: 11247)
+Usuario (Cuenta 1001): [2025-05-12 17:55:21] Usuario con cuenta 1001 ha iniciado sesión y conectado a SHM.
+Usuario desconectado: PID 11247
+Usuario conectado: Cuenta 1001 (PID: 11892)
+Usuario (Cuenta 1001): [2025-05-12 18:06:00] Usuario con cuenta 1001 ha iniciado sesión y conectado a SHM.
+Usuario desconectado: PID 11892
+Usuario conectado: Cuenta 1001 (PID: 12216)
+Usuario (Cuenta 1001): [2025-05-12 18:10:59] Usuario con cuenta 1001 ha iniciado sesión y conectado a SHM.
+Usuario conectado: Cuenta 1001 (PID: 13303)
+Usuario (Cuenta 1001): [2025-05-12 18:25:29] Usuario con cuenta 1001 ha iniciado sesión y conectado a SHM.
+Usuario (Cuenta 1001): [2025-05-12 18:25:37] Consulta de saldo en la cuenta 1001. Saldo actual: 2151.00
+Usuario conectado: Cuenta 1003 (PID: 13415)
+Usuario (Cuenta 1003): [2025-05-12 18:25:58] Usuario con cuenta 1003 ha iniciado sesión y conectado a SHM.
+Usuario (Cuenta 1003): [2025-05-12 18:26:14] Depósito de 100.00 en la cuenta 1003. Nuevo Saldo: 3100.43
+Usuario (Cuenta 1003): [2025-05-12 18:26:16] Consulta de saldo en la cuenta 1003. Saldo actual: 3100.43
+Usuario (Cuenta 1003): [2025-05-12 18:26:52] Transferencia de 1678.00 desde la cuenta 1003 a la cuenta 1001. Saldo origen: 1422.43. Saldo destino: 3829.00
+Usuario desconectado: PID 13415
+Usuario desconectado: PID 13303
+Usuario conectado: Cuenta 1001 (PID: 14120)
+Usuario (Cuenta 1001): [2025-05-12 18:33:00] Usuario con cuenta 1001 ha iniciado sesión y conectado a SHM.
+Usuario (Cuenta 1001): [2025-05-12 18:33:03] Consulta de saldo en la cuenta 1001. Saldo actual: 2151.00
+Usuario desconectado: PID 14120
+Usuario conectado: Cuenta 1003 (PID: 18861)
+Usuario (Cuenta 1003): [2025-05-14 13:19:26] Usuario con cuenta 1003 ha iniciado sesión y conectado a SHM.
+Usuario (Cuenta 1003): [2025-05-14 13:19:50] Consulta de saldo en la cuenta 1003. Saldo actual: 1422.43
+Usuario (Cuenta 1003): [2025-05-14 13:20:41] Intento de Transferencia FALLIDO (excede límite 10000.00) de 10001.00 desde cuenta 1003 a 1001.
+Usuario (Cuenta 1003): [2025-05-14 13:21:04] Intento de Retiro FALLIDO (excede límite 5000.00) de 50000.00 de la cuenta 1003.
+Usuario (Cuenta 1003): [2025-05-14 13:21:13] Consulta de saldo en la cuenta 1003. Saldo actual: 1422.43
+Usuario desconectado: PID 18861
+Usuario conectado: Cuenta 1002 (PID: 22257)
+Usuario (Cuenta 1002): [2025-05-14 13:54:54] Usuario con cuenta 1002 ha iniciado sesión y conectado a SHM.
+Usuario (Cuenta 1002): [2025-05-14 13:55:11] Consulta de saldo en la cuenta 1002. Saldo actual: 1050.67
+Usuario (Cuenta 1002): [2025-05-14 13:55:26] Retiro de 10.00 de la cuenta 1002. Nuevo Saldo: 1040.67
+Usuario (Cuenta 1002): [2025-05-14 13:55:32] Retiro de 100.00 de la cuenta 1002. Nuevo Saldo: 940.67
+Usuario (Cuenta 1002): [2025-05-14 13:55:36] Retiro de 100.00 de la cuenta 1002. Nuevo Saldo: 840.67
+Usuario (Cuenta 1002): [2025-05-14 13:55:39] Retiro de 100.00 de la cuenta 1002. Nuevo Saldo: 740.67
+Usuario (Cuenta 1002): [2025-05-14 13:55:51] Depósito de 300000.00 en la cuenta 1002. Nuevo Saldo: 300740.66
+Usuario (Cuenta 1002): [2025-05-14 13:55:54] Consulta de saldo en la cuenta 1002. Saldo actual: 300740.66
+Usuario desconectado: PID 22257
+Usuario conectado: Cuenta 1001 (PID: 24790)
+Usuario conectado: Cuenta 1001 (PID: 25166)
+Usuario conectado: Cuenta 1001 (PID: 25844)

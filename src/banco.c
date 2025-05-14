@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE  //para habilitar usleep()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,10 +22,11 @@
 #define MAX_USUARIOS_SIMULTANEOS 10
 #define MAX_CUENTAS 100 // Máximo número de cuentas en la memoria compartida
 #define FIFO_BASE_PATH "/tmp/banco_fifo_"
+#define BUFFER_OPERACIONES_SIZE 10 // Tamaño para el buffer circular de operaciones
 
 typedef struct {
     double limite_retiro;
-    int limite_transferencia;
+    double limite_transferencia; // Cambiado a double para consistencia
     int umbral_retiros;
     int umbral_transferencias;
     int num_hilos;
@@ -39,10 +41,22 @@ typedef struct {
     int bloqueado; // 1 si la cuenta está bloqueada, 0 si está activa
 } Cuenta;
 
+// Buffer circular para las operaciones de E/S
+typedef struct {
+    Cuenta operaciones[BUFFER_OPERACIONES_SIZE];
+    int inicio;
+    int fin;
+    int contador; // Para saber cuántos elementos hay
+} BufferEstructurado;
+
 typedef struct {
     pthread_mutex_t mutex; // Mutex para sincronizar el acceso a las cuentas
+    pthread_mutex_t buffer_mutex; // Mutex para el buffer de operaciones
     Cuenta cuentas[MAX_CUENTAS];
     int num_cuentas;
+    BufferEstructurado buffer_ops; // Buffer para E/S
+    double limite_retiro_config;
+    double limite_transferencia_config;
 } TablaCuentas;
 
 Config config;
@@ -70,9 +84,34 @@ void manejador_senales(int sig) {
 
 void limpiar_recursos_banco() {
     printf("Limpiando recursos del banco...\n");
+    
+    // Forzar volcado final a disco
+    if (tabla_global_cuentas != NULL) {
+        printf("Realizando volcado final de datos a disco...\n");
+        FILE *archivo = fopen(config.archivo_cuentas, "w");
+        if (archivo != NULL) {
+            if (pthread_mutex_lock(&tabla_global_cuentas->mutex) == 0) {
+                for (int i = 0; i < tabla_global_cuentas->num_cuentas; i++) {
+                    fprintf(archivo, "%d|%s|%.2f|%d\n",
+                            tabla_global_cuentas->cuentas[i].numero_cuenta,
+                            tabla_global_cuentas->cuentas[i].titular,
+                            tabla_global_cuentas->cuentas[i].saldo,
+                            tabla_global_cuentas->cuentas[i].bloqueado);
+                }
+                pthread_mutex_unlock(&tabla_global_cuentas->mutex);
+            }
+            fclose(archivo);
+            printf("Volcado final completado correctamente.\n");
+        } else {
+            perror("Error al realizar volcado final");
+        }
+    }
 
     if (tabla_global_cuentas != NULL) {
         // Destruir el mutex
+        if (pthread_mutex_destroy(&tabla_global_cuentas->buffer_mutex) != 0) {
+            perror("Error al destruir el mutex del buffer en memoria compartida");
+        }
         if (pthread_mutex_destroy(&tabla_global_cuentas->mutex) != 0) {
             perror("Error al destruir el mutex en memoria compartida");
         }
@@ -108,7 +147,7 @@ void leer_configuracion(const char *filename, Config *cfg) {
         if (strncmp(line, "LIMITE_RETIRO=", 14) == 0) {
             cfg->limite_retiro = atoi(line + 14);
         } else if (strncmp(line, "LIMITE_TRANSFERENCIA=", 21) == 0) {
-            cfg->limite_transferencia = atoi(line + 21);
+            cfg->limite_transferencia = atof(line + 21); // Usar atof para double
         } else if (strncmp(line, "UMBRAL_RETIROS=", 15) == 0) {
             cfg->umbral_retiros = atoi(line + 15);
         } else if (strncmp(line, "UMBRAL_TRANSFERENCIAS=", 22) == 0) {
@@ -164,11 +203,74 @@ void limpiar_recursos_usuario(int idx) {
     usuarios[idx].cuenta = 0;
 }
 
+// Hilo dedicado para gestionar la escritura de operaciones desde el buffer al disco
+void *gestionar_entrada_salida(void *arg) {
+    TablaCuentas *shm_ptr_io = (TablaCuentas *)arg;
+    char nombre_archivo_cuentas[256];
+    int operacion_procesada_del_buffer = 0;
+
+    // Copiar nombre del archivo para evitar problemas de concurrencia
+    strncpy(nombre_archivo_cuentas, config.archivo_cuentas, sizeof(nombre_archivo_cuentas)-1);
+    nombre_archivo_cuentas[sizeof(nombre_archivo_cuentas)-1] = '\0';
+
+    printf("Hilo de E/S iniciado. Escribiendo cambios a '%s'\n", nombre_archivo_cuentas);
+
+    while (continuar_ejecucion) {
+        operacion_procesada_del_buffer = 0;
+
+        pthread_mutex_lock(&shm_ptr_io->buffer_mutex);
+        if (shm_ptr_io->buffer_ops.contador > 0) {
+            // Consumir una "señal" del buffer, indicando que hay cambios para persistir.
+            Cuenta cuenta_a_actualizar = shm_ptr_io->buffer_ops.operaciones[shm_ptr_io->buffer_ops.inicio];
+            shm_ptr_io->buffer_ops.inicio = (shm_ptr_io->buffer_ops.inicio + 1) % BUFFER_OPERACIONES_SIZE;
+            shm_ptr_io->buffer_ops.contador--;
+            operacion_procesada_del_buffer = 1;
+            pthread_mutex_unlock(&shm_ptr_io->buffer_mutex);
+
+            if (operacion_procesada_del_buffer) {
+                // Siempre reescribir todo el archivo cuentas.dat con los datos actuales de la SHM
+                FILE *archivo = fopen(nombre_archivo_cuentas, "w"); // Abrir en modo escritura (truncar y escribir)
+                if (archivo == NULL) {
+                    perror("Hilo E/S: Error al abrir cuentas.dat para reescritura en texto plano");
+                    usleep(1000000); // Esperar antes de reintentar
+                    continue; // Saltar esta iteración de escritura
+                }
+
+                // Bloquear el mutex principal para leer consistentemente todas las cuentas de SHM
+                if (pthread_mutex_lock(&shm_ptr_io->mutex) == 0) {
+                    for (int k = 0; k < shm_ptr_io->num_cuentas; k++) {
+                        // Asegurar que el titular esté terminado en null
+                        shm_ptr_io->cuentas[k].titular[sizeof(shm_ptr_io->cuentas[k].titular) - 1] = '\0';
+                        if (fprintf(archivo, "%d|%s|%.2f|%d\n",
+                                    shm_ptr_io->cuentas[k].numero_cuenta,
+                                    shm_ptr_io->cuentas[k].titular,
+                                    shm_ptr_io->cuentas[k].saldo,
+                                    shm_ptr_io->cuentas[k].bloqueado) < 0) {
+                            perror("Hilo E/S: Error al escribir cuenta en disco (texto plano)");
+                            // Podríamos intentar seguir con las demás cuentas o parar.
+                            break; 
+                        }
+                    }
+                    pthread_mutex_unlock(&shm_ptr_io->mutex);
+                    // printf("Hilo E/S: Archivo cuentas.dat resincronizado con SHM.\n");
+                } else {
+                    perror("Hilo E/S: No se pudo bloquear el mutex principal para leer SHM");
+                }
+                fclose(archivo);
+            }
+        } else {
+            pthread_mutex_unlock(&shm_ptr_io->buffer_mutex);
+            usleep(500000); // Esperar 0.5 segundos si no hay operaciones
+        }
+    }
+    printf("Hilo de E/S terminando.\n");
+    return NULL;
+}
+
 void cargar_cuentas_en_shm(const char* archivo_cuentas_path) {
-    FILE *f_cuentas = fopen(archivo_cuentas_path, "r");
+    FILE *f_cuentas = fopen(archivo_cuentas_path, "r"); // Abrir en modo lectura de texto
     if (f_cuentas == NULL) {
         perror("Error al abrir el archivo de cuentas para cargar en SHM");
-        // Considerar manejo de error más robusto, como salir o usar valores por defecto
         tabla_global_cuentas->num_cuentas = 0;
         return;
     }
@@ -177,36 +279,45 @@ void cargar_cuentas_en_shm(const char* archivo_cuentas_path) {
 
     int i = 0;
     char line[256];
-    // El formato de init_cuentas.c es: numero_cuenta|titular|saldo|num_transacciones
-    // La estructura Cuenta en SHM es: numero_cuenta, titular, saldo, bloqueado
+    // Formato esperado: numero_cuenta|titular|saldo|bloqueado
     while (fgets(line, sizeof(line), f_cuentas) != NULL && i < MAX_CUENTAS) {
         int num_cuenta_file;
-        char titular_file[50];
+        char titular_file[50]; // Tamaño de Cuenta.titular
         float saldo_file;
-        int num_trans_file; // Leerlo para consumir el dato del archivo
+        int bloqueado_file;
 
-        if (sscanf(line, "%d|%49[^|]|%f|%d", &num_cuenta_file, titular_file, &saldo_file, &num_trans_file) == 4) {
+        if (sscanf(line, "%d|%49[^|]|%f|%d", &num_cuenta_file, titular_file, &saldo_file, &bloqueado_file) == 4) {
             tabla_global_cuentas->cuentas[i].numero_cuenta = num_cuenta_file;
-            strncpy(tabla_global_cuentas->cuentas[i].titular, titular_file, 49);
-            tabla_global_cuentas->cuentas[i].titular[49] = '\0'; // Asegurar nul-termination
+            strncpy(tabla_global_cuentas->cuentas[i].titular, titular_file, sizeof(tabla_global_cuentas->cuentas[i].titular) - 1);
+            tabla_global_cuentas->cuentas[i].titular[sizeof(tabla_global_cuentas->cuentas[i].titular) - 1] = '\0'; // Asegurar nul-termination
             tabla_global_cuentas->cuentas[i].saldo = saldo_file;
-            tabla_global_cuentas->cuentas[i].bloqueado = 0; // Inicialmente desbloqueada
+            tabla_global_cuentas->cuentas[i].bloqueado = bloqueado_file;
+            printf("DEBUG: Cuenta %d cargada - Titular: %s, Saldo: %.2f, Bloqueado: %d\n", 
+                   tabla_global_cuentas->cuentas[i].numero_cuenta,
+                   tabla_global_cuentas->cuentas[i].titular, 
+                   tabla_global_cuentas->cuentas[i].saldo,
+                   tabla_global_cuentas->cuentas[i].bloqueado);
             i++;
         } else {
-            fprintf(stderr, "Advertencia: Línea mal formada en archivo de cuentas: %s", line);
+            fprintf(stderr, "Advertencia: Línea mal formada en archivo de cuentas (texto plano): %s", line);
         }
     }
     tabla_global_cuentas->num_cuentas = i;
     fclose(f_cuentas);
     printf("%d cuentas cargadas en memoria compartida.\n", tabla_global_cuentas->num_cuentas);
 
-    // Imprimir para verificar (opcional)
-    // for(int k=0; k < tabla_global_cuentas->num_cuentas; k++) {
-    //     printf("SHM Cuenta: %d, Titular: %s, Saldo: %.2f, Bloqueado: %d\n", tabla_global_cuentas->cuentas[k].numero_cuenta, tabla_global_cuentas->cuentas[k].titular, tabla_global_cuentas->cuentas[k].saldo, tabla_global_cuentas->cuentas[k].bloqueado);
-    // }
+    printf("Verificando y desbloqueando cuentas para asegurar funcionamiento...\n");
+    for (int j = 0; j < tabla_global_cuentas->num_cuentas; j++) {
+        if (tabla_global_cuentas->cuentas[j].bloqueado != 0) {
+            printf("INFO: Desbloqueando cuenta %d que estaba bloqueada incorrectamente\n", 
+                   tabla_global_cuentas->cuentas[j].numero_cuenta);
+            tabla_global_cuentas->cuentas[j].bloqueado = 0;
+        }
+    }
 }
 
 int main() {
+    pthread_t tid_io_manager;
     // Inicializar array de usuarios
     for (int i = 0; i < MAX_USUARIOS_SIMULTANEOS; i++) {
         usuarios[i].pid = 0;
@@ -239,7 +350,7 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Inicializar el mutex en la memoria compartida
+    // Inicializar el mutex principal de cuentas en la memoria compartida
     pthread_mutexattr_t attr;
     if (pthread_mutexattr_init(&attr) != 0) {
         perror("Error al inicializar atributos del mutex");
@@ -258,9 +369,26 @@ int main() {
         limpiar_recursos_banco();
         exit(EXIT_FAILURE);
     }
+
+    // Inicializar el mutex del buffer de operaciones en la memoria compartida
+    if (pthread_mutex_init(&tabla_global_cuentas->buffer_mutex, &attr) != 0) {
+        perror("Error al inicializar el mutex del buffer en memoria compartida");
+        pthread_mutex_destroy(&tabla_global_cuentas->mutex); // Limpiar el mutex ya inicializado
+        pthread_mutexattr_destroy(&attr);
+        limpiar_recursos_banco(); // shmdt, shmctl
+        exit(EXIT_FAILURE);
+    }
     pthread_mutexattr_destroy(&attr); // Los atributos ya no son necesarios
 
+    // Inicializar el buffer circular
+    tabla_global_cuentas->buffer_ops.inicio = 0;
+    tabla_global_cuentas->buffer_ops.fin = 0;
+    tabla_global_cuentas->buffer_ops.contador = 0;
     // Cargar datos de cuentas desde el archivo a la memoria compartida
+    // Copiar límites de configuración a la memoria compartida
+    tabla_global_cuentas->limite_retiro_config = config.limite_retiro;
+    tabla_global_cuentas->limite_transferencia_config = config.limite_transferencia;
+
     cargar_cuentas_en_shm(config.archivo_cuentas);
 
     // Abrir el archivo de log.
@@ -273,6 +401,14 @@ int main() {
 
     printf("Banco iniciado. Esperando conexiones de usuario...\n");
     printf("Memoria compartida ID: %d. Presione Ctrl+C para terminar.\n\n", shm_id);
+
+    // Crear y lanzar el hilo gestor de E/S
+    if (pthread_create(&tid_io_manager, NULL, gestionar_entrada_salida, (void *)tabla_global_cuentas) != 0) {
+        perror("Error al crear el hilo gestor de E/S");
+        limpiar_recursos_banco(); // Limpia SHM y mutexes
+        fclose(log_file);
+        exit(EXIT_FAILURE);
+    }
 
     // Variables para el manejo no bloqueante de la entrada
     fd_set read_fds;
@@ -529,7 +665,7 @@ int main() {
                         
                         // Declarar respuesta y monto aquí para tenerlos disponibles en todo el bloque
                         char respuesta[512];
-                        double monto = 0.0;
+                        //double monto = 0.0; //El proceso banco no necesita extraer el monto de la operación del mensaje del usuario para procesarlo, ya que el proceso usuario ya ha realizado la operación directamente en la memoria compartida
                         // Con memoria compartida, el proceso usuario realiza la operación.
                         // El banco solo registra y confirma.
                         // El formato del mensaje del usuario ahora puede incluir el resultado.
@@ -595,6 +731,12 @@ int main() {
             waitpid(usuarios[i].pid, NULL, 0);
             limpiar_recursos_usuario(i);
         }
+    }
+
+    // Señalar al hilo de E/S que termine y esperar por él
+    continuar_ejecucion = 0; // El hilo gestion_entrada_salida usa esta variable global
+    if (tid_io_manager != 0) { // Asegurarse que el hilo fue creado
+        pthread_join(tid_io_manager, NULL);
     }
 
     fclose(log_file);

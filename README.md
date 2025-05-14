@@ -15,18 +15,27 @@ gcc -g -o bin/usuario src/usuario.c -pthread -lrt && gcc -g -o bin/monitor src/m
 
 ### 1. `banco.c`
 
-Este programa es el núcleo del sistema bancario. Se encarga de leer la configuración, crear semáforos para controlar el acceso a los archivos y gestionar la comunicación con los usuarios.
-
-- **Configuración:** Lee los parámetros de configuración desde un archivo.
-- **Semáforos:** Utiliza semáforos para proteger las operaciones concurrentes en el archivo de cuentas.
-- **Comunicación:** Crea tuberías y lanza procesos hijos para cada usuario. Redirige la salida estándar de los procesos hijos a las tuberías para leer las operaciones de los usuarios.
+Este programa es el núcleo del sistema bancario. Se encarga de:
+- **Configuración:** Leer los parámetros de configuración desde `config/config.txt`.
+- **Memoria Compartida:** Crear e inicializar un segmento de memoria compartida donde se almacenan los datos de todas las cuentas. Esta memoria es accesible tanto por el banco como por los procesos de usuario.
+- **Sincronización:** Utilizar **mutexes (alojados en la memoria compartida)** para proteger el acceso concurrente a los datos de las cuentas y a un buffer circular de operaciones en la memoria compartida.
+- **Gestión de Usuarios:**
+    - Esperar la entrada del administrador (número de cuenta) para iniciar una sesión de usuario.
+    - Crear **FIFOs (tuberías con nombre)** dedicados para la comunicación bidireccional con cada proceso de usuario.
+    - Lanzar un nuevo proceso `usuario.c` (generalmente en una nueva ventana de `xterm`) para cada sesión.
+- **Persistencia:** Un hilo dedicado en `banco.c` se encarga de escribir periódicamente (o cuando hay actividad) el estado de las cuentas desde la memoria compartida al archivo `cuentas.dat`, utilizando un buffer circular como mecanismo de señalización.
+- **Logging:** Registrar eventos importantes en `data/transacciones.log`.
 
 ### 2. `usuario.c`
+Este programa es la interfaz para el cliente final. Es lanzado por `banco.c`.
+- **Menú Interactivo:** Presenta opciones para realizar depósitos, retiros, transferencias y consultar el saldo.
+- **Comunicación con el Banco:**
+    - Se comunica con el proceso `banco.c` a través de los **FIFOs** creados por el banco para enviar notificaciones de operaciones y recibir respuestas/confirmaciones.
+- **Operaciones de Cuenta:**
+    - Accede y **modifica directamente los datos de las cuentas (saldo, etc.) en la memoria compartida**, protegido por los mutexes definidos por el banco.
+    - Notifica al banco sobre las operaciones realizadas para que puedan ser registradas y, eventualmente, persistidas a disco por el hilo de E/S del banco.
+- **Logging:** Cada instancia de `usuario.c` crea un log individual en `/transacciones/<N_CUENTA>/transacciones.log`.
 
-Este programa presenta un menú interactivo al usuario y envía las operaciones seleccionadas al proceso `banco.c` a través de la salida estándar.
-
-- **Menú:** Presenta opciones para realizar depósitos, retiros, transferencias y consultar el saldo.
-- **Operaciones:** Envía las operaciones seleccionadas a través de la salida estándar para que `banco.c` las procese.
 
 ### 3. `init_cuentas.c`
 
