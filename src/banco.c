@@ -665,7 +665,7 @@ int main() {
                         
                         // Declarar respuesta y monto aquí para tenerlos disponibles en todo el bloque
                         char respuesta[512];
-                        double monto = 0.0;
+                        //double monto = 0.0; //El proceso banco no necesita extraer el monto de la operación del mensaje del usuario para procesarlo, ya que el proceso usuario ya ha realizado la operación directamente en la memoria compartida
                         // Con memoria compartida, el proceso usuario realiza la operación.
                         // El banco solo registra y confirma.
                         // El formato del mensaje del usuario ahora puede incluir el resultado.
