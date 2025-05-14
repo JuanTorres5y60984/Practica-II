@@ -26,7 +26,7 @@
 
 typedef struct {
     double limite_retiro;
-    int limite_transferencia;
+    double limite_transferencia; // Cambiado a double para consistencia
     int umbral_retiros;
     int umbral_transferencias;
     int num_hilos;
@@ -55,6 +55,8 @@ typedef struct {
     Cuenta cuentas[MAX_CUENTAS];
     int num_cuentas;
     BufferEstructurado buffer_ops; // Buffer para E/S
+    double limite_retiro_config;
+    double limite_transferencia_config;
 } TablaCuentas;
 
 Config config;
@@ -145,7 +147,7 @@ void leer_configuracion(const char *filename, Config *cfg) {
         if (strncmp(line, "LIMITE_RETIRO=", 14) == 0) {
             cfg->limite_retiro = atoi(line + 14);
         } else if (strncmp(line, "LIMITE_TRANSFERENCIA=", 21) == 0) {
-            cfg->limite_transferencia = atoi(line + 21);
+            cfg->limite_transferencia = atof(line + 21); // Usar atof para double
         } else if (strncmp(line, "UMBRAL_RETIROS=", 15) == 0) {
             cfg->umbral_retiros = atoi(line + 15);
         } else if (strncmp(line, "UMBRAL_TRANSFERENCIAS=", 22) == 0) {
@@ -383,6 +385,10 @@ int main() {
     tabla_global_cuentas->buffer_ops.fin = 0;
     tabla_global_cuentas->buffer_ops.contador = 0;
     // Cargar datos de cuentas desde el archivo a la memoria compartida
+    // Copiar límites de configuración a la memoria compartida
+    tabla_global_cuentas->limite_retiro_config = config.limite_retiro;
+    tabla_global_cuentas->limite_transferencia_config = config.limite_transferencia;
+
     cargar_cuentas_en_shm(config.archivo_cuentas);
 
     // Abrir el archivo de log.

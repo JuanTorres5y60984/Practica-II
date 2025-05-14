@@ -49,6 +49,8 @@ typedef struct {
     Cuenta cuentas[100]; // Asumir MAX_CUENTAS 100, debe coincidir con banco.c
     int num_cuentas;
     BufferEstructurado buffer_ops;
+    double limite_retiro_config;
+    double limite_transferencia_config;
 } TablaCuentas;
 
 // Estructura para pasar parámetros al hilo.
@@ -131,7 +133,15 @@ void *ejecutar_operacion(void *arg) {
                        timestamp, args->op.monto, args->op.cuenta, saldo_actual);
                 break;
             case 2: // Retiro
-                if (tabla_bancaria_shm->cuentas[cuenta_idx].saldo >= args->op.monto) {
+                if (args->op.monto > tabla_bancaria_shm->limite_retiro_config) {
+                    sprintf(mensaje_usuario_local, "Error: El monto de retiro %.2f excede el límite permitido de %.2f.\n",
+                           args->op.monto, tabla_bancaria_shm->limite_retiro_config);
+                    sprintf(mensaje_para_log_usuario, "[%s] Intento de Retiro FALLIDO (excede límite %.2f): %.2f. Saldo actual: %.2f\n",
+                           timestamp, tabla_bancaria_shm->limite_retiro_config, args->op.monto, tabla_bancaria_shm->cuentas[cuenta_idx].saldo);
+                    sprintf(mensaje_al_banco, "[%s] Intento de Retiro FALLIDO (excede límite %.2f) de %.2f de la cuenta %d.\n",
+                           timestamp, tabla_bancaria_shm->limite_retiro_config, args->op.monto, args->op.cuenta);
+                }
+                else if (tabla_bancaria_shm->cuentas[cuenta_idx].saldo >= args->op.monto) {
                     tabla_bancaria_shm->cuentas[cuenta_idx].saldo -= args->op.monto;
                     saldo_actual = tabla_bancaria_shm->cuentas[cuenta_idx].saldo;
                     sprintf(mensaje_usuario_local, "Retiro de %.2f realizado. Nuevo saldo: %.2f\n", args->op.monto, saldo_actual);
@@ -165,7 +175,15 @@ void *ejecutar_operacion(void *arg) {
                      sprintf(mensaje_para_log_usuario, "[%s] Intento de Transferencia FALLIDO (cuenta destino %d bloqueada) desde %d a %d.\n", timestamp, args->op.cuenta_destino, args->op.cuenta, args->op.cuenta_destino);
                      sprintf(mensaje_al_banco, "[%s] Intento de Transferencia FALLIDO (cuenta destino %d bloqueada) desde %d.\n",
                            timestamp, args->op.cuenta_destino, args->op.cuenta);
-                } else if (tabla_bancaria_shm->cuentas[cuenta_idx].saldo >= args->op.monto) {
+                } else if (args->op.monto > tabla_bancaria_shm->limite_transferencia_config) {
+                    sprintf(mensaje_usuario_local, "Error: El monto de transferencia %.2f excede el límite permitido de %.2f.\n",
+                           args->op.monto, tabla_bancaria_shm->limite_transferencia_config);
+                    sprintf(mensaje_para_log_usuario, "[%s] Intento de Transferencia FALLIDO (excede límite %.2f): %.2f desde cuenta %d a %d. Saldo actual: %.2f\n",
+                           timestamp, tabla_bancaria_shm->limite_transferencia_config, args->op.monto, args->op.cuenta, args->op.cuenta_destino, tabla_bancaria_shm->cuentas[cuenta_idx].saldo);
+                    sprintf(mensaje_al_banco, "[%s] Intento de Transferencia FALLIDO (excede límite %.2f) de %.2f desde cuenta %d a %d.\n",
+                           timestamp, tabla_bancaria_shm->limite_transferencia_config, args->op.monto, args->op.cuenta, args->op.cuenta_destino);
+                }
+                 else if (tabla_bancaria_shm->cuentas[cuenta_idx].saldo >= args->op.monto) {
                     tabla_bancaria_shm->cuentas[cuenta_idx].saldo -= args->op.monto;
                     tabla_bancaria_shm->cuentas[cuenta_destino_idx].saldo += args->op.monto;
                     saldo_actual = tabla_bancaria_shm->cuentas[cuenta_idx].saldo;
