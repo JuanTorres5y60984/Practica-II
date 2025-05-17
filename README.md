@@ -9,7 +9,7 @@ sudo apt-get install xterm
 ```
 compilar con: 
 ```sh
-gcc -g -o bin/usuario src/usuario.c -pthread -lrt && gcc -g -o bin/monitor src/monitor.c -pthread -lrt && gcc -g -o bin/init_cuentas src/init_cuentas.c -pthread -lrt && gcc -g -o bin/banco src/banco.c -pthread -lrt
+gcc -w -o bin/usuario src/usuario.c -pthread -lrt && gcc -w -o bin/monitor src/monitor.c -pthread -lrt && gcc -w -o bin/init_cuentas src/init_cuentas.c -pthread -lrt && gcc -w -o bin/banco src/banco.c -pthread -lrt
 ```
 ## Componentes
 
@@ -67,10 +67,7 @@ El archivo de configuración (`config/config.txt`) contiene los siguientes pará
 1. Compilar los programas:
 
 ```sh
-gcc -o bin/banco src/banco.c -pthread -lrt
-gcc -o bin/init_cuentas src/init_cuentas.c -pthread -lrt
-gcc -o bin/monitor src/monitor.c -pthread -lrt
-gcc -o bin/usuario src/usuario.c -pthread -lrt
+gcc -w -o bin/usuario src/usuario.c -pthread -lrt && gcc -w -o bin/monitor src/monitor.c -pthread -lrt && gcc -w -o bin/init_cuentas src/init_cuentas.c -pthread -lrt && gcc -w -o bin/banco src/banco.c -pthread -lrt
 ```
 
 2. Inicializar el archivo de cuentas:

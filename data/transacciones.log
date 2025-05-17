@@ -254,3 +254,16 @@ Usuario desconectado: PID 22257
 Usuario conectado: Cuenta 1001 (PID: 24790)
 Usuario conectado: Cuenta 1001 (PID: 25166)
 Usuario conectado: Cuenta 1001 (PID: 25844)
+Usuario conectado: Cuenta 1001 (PID: 11300)
+Usuario (Cuenta 1001): [2025-05-17 12:32:54] Usuario con cuenta 1001 ha iniciado sesión y conectado a SHM.
+Usuario (Cuenta 1001): [2025-05-17 12:36:57] Depósito de 100.00 en la cuenta 1001. Nuevo Saldo: 2251.00
+Usuario (Cuenta 1001): [2025-05-17 12:39:28] Retiro de 300.00 de la cuenta 1001. Nuevo Saldo: 1951.00
+Usuario (Cuenta 1001): [2025-05-17 12:40:44] Intento de Retiro FALLIDO (saldo insuficiente) de 1952.00 de la cuenta 1001.
+Usuario (Cuenta 1001): [2025-05-17 12:42:12] Transferencia de 150.00 desde la cuenta 1001 a la cuenta 1002. Saldo origen: 1801.00. Saldo destino: 300890.66
+Usuario (Cuenta 1001): [2025-05-17 12:43:19] Intento de Transferencia FALLIDO (cuenta destino 505 no encontrada) desde 1001.
+Usuario (Cuenta 1001): [2025-05-17 12:44:25] Consulta de saldo en la cuenta 1001. Saldo actual: 1801.00
+Usuario conectado: Cuenta 1002 (PID: 11429)
+Usuario (Cuenta 1002): [2025-05-17 12:45:30] Usuario con cuenta 1002 ha iniciado sesión y conectado a SHM.
+Usuario (Cuenta 1002): [2025-05-17 12:45:59] Consulta de saldo en la cuenta 1002. Saldo actual: 300890.66
+Usuario desconectado: PID 11429
+Usuario desconectado: PID 11300
